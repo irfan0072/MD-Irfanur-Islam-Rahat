@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { Thumb } from './app'
 import { num, pagesLabel, tr, type Key } from './i18n'
 import { Icon } from './icons'
+import { AI_MODELS, DEFAULT_MODEL, PROVIDER_NAME, type Provider } from './lib/ai'
 import { renderAll } from './lib/preview'
 import {
   S, aiAssist, assign, copiesOf, copyConflict, exportCsv, fileById, formatSize, generate, openPairs, reqOfFile, reqTitle,
@@ -260,18 +261,102 @@ function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
 
 const field = 'min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-[15px] font-semibold text-slate-800 outline-none transition focus:border-teal-500'
 
-/** The key is kept for this browser tab only. */
-function readKey(): string {
+const KEY_HINT: Record<Provider, string> = { google: 'AIza...', openai: 'sk-...', anthropic: 'sk-ant-...' }
+
+/** Kept for this browser tab only: never in the saved project, never in a download. */
+const fromTab = (k: string): string => {
   try {
-    return sessionStorage.getItem('tpb-ai-key') ?? ''
+    return sessionStorage.getItem(k) ?? ''
   } catch {
     return ''
   }
 }
+const toTab = (k: string, v: string) => {
+  try {
+    sessionStorage.setItem(k, v)
+  } catch {
+    /* the value simply is not remembered */
+  }
+}
+
+/** Choosing a model or typing a key sends nothing. Only the Ask AI button makes a request. */
+function AiBox() {
+  const [modelId, setModelId] = useState(() => (AI_MODELS.some((m) => m.id === fromTab('tpb-ai-model')) ? fromTab('tpb-ai-model') : DEFAULT_MODEL))
+  // One key per provider, so a key typed for one service is never offered to another.
+  const [keys, setKeys] = useState<Record<Provider, string>>(() => ({ google: fromTab('tpb-ai-key-google'), openai: fromTab('tpb-ai-key-openai'), anthropic: fromTab('tpb-ai-key-anthropic') }))
+  const model = AI_MODELS.find((m) => m.id === modelId) ?? AI_MODELS[0]
+  const provider = PROVIDER_NAME[model.provider]
+  const key = keys[model.provider]
+  return (
+    <div class="p-4 sm:px-6" data-testid="ai-box">
+      <div class="flex items-start gap-4">
+        <span class="grid size-11 shrink-0 place-items-center rounded-2xl bg-teal-50 text-teal-700"><Icon n="spark" /></span>
+        <div class="min-w-0 flex-1">
+          <div class="font-bold text-slate-900">{tr('ai')}</div>
+          <div class="text-sm text-slate-600">{tr('aiSub')}</div>
+          <form
+            class="mt-3 grid gap-3 sm:grid-cols-2"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void aiAssist(model.id, key)
+            }}
+          >
+            <label class="block">
+              <span class="mb-1 block text-sm font-semibold text-slate-700">{tr('aiModel')}</span>
+              <select
+                class={field}
+                value={model.id}
+                data-testid="ai-model"
+                onChange={(e) => {
+                  const v = (e.currentTarget as HTMLSelectElement).value
+                  setModelId(v)
+                  toTab('tpb-ai-model', v)
+                }}
+              >
+                <optgroup label={tr('aiStandard')}>
+                  {AI_MODELS.filter((m) => !m.advanced).map((m) => (
+                    <option key={m.id} value={m.id}>{m.label} ({PROVIDER_NAME[m.provider]})</option>
+                  ))}
+                </optgroup>
+                <optgroup label={tr('aiAdvanced')}>
+                  {AI_MODELS.filter((m) => m.advanced).map((m) => (
+                    <option key={m.id} value={m.id}>{m.label} ({PROVIDER_NAME[m.provider]})</option>
+                  ))}
+                </optgroup>
+              </select>
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-sm font-semibold text-slate-700" data-testid="ai-key-label">{tr('aiKeyFor', { p: provider })}</span>
+              <input
+                type="password"
+                class={field}
+                autocomplete="off"
+                spellcheck={false}
+                placeholder={`${tr('aiKeyPh')} (${KEY_HINT[model.provider]})`}
+                value={key}
+                data-testid="ai-key"
+                onInput={(e) => {
+                  const v = (e.currentTarget as HTMLInputElement).value
+                  setKeys({ ...keys, [model.provider]: v })
+                  toTab(`tpb-ai-key-${model.provider}`, v)
+                }}
+              />
+            </label>
+            <p class="text-sm font-medium text-slate-700 sm:col-span-2" data-testid="ai-target">{tr('aiTarget', { m: model.label, p: provider })}</p>
+            {model.id === 'gemini-2.5-flash' && <p class="text-sm text-amber-800 sm:col-span-2" data-testid="ai-note">{tr('aiOldGemini')}</p>}
+            <button class="btn btn-primary sm:col-span-2 sm:justify-self-start" disabled={!key.trim() || !S.files.length || !!S.busy} data-testid="ai-ask">
+              <Icon n="spark" />
+              {tr('aiAsk')}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export function Extras() {
   const input = useRef<HTMLInputElement>(null)
-  const [key, setKey] = useState(readKey)
   const seal = S.seal
   return (
     <section class="card a-rise divide-y divide-slate-100" aria-label={tr('extras')} data-testid="extras">
@@ -365,45 +450,7 @@ export function Extras() {
         )}
       </div>
 
-      <div class="p-4 sm:px-6" data-testid="ai-box">
-        <div class="flex items-start gap-4">
-          <span class="grid size-11 shrink-0 place-items-center rounded-2xl bg-teal-50 text-teal-700"><Icon n="spark" /></span>
-          <div class="min-w-0 flex-1">
-            <div class="font-bold text-slate-900">{tr('ai')}</div>
-            <div class="text-sm text-slate-600">{tr('aiSub')}</div>
-            <form
-              class="mt-3 flex flex-col gap-2 sm:flex-row"
-              onSubmit={(e) => {
-                e.preventDefault()
-                void aiAssist(key)
-              }}
-            >
-              <input
-                type="password"
-                class={field}
-                autocomplete="off"
-                spellcheck={false}
-                placeholder={tr('aiKeyPh')}
-                aria-label={tr('aiKeyPh')}
-                value={key}
-                onInput={(e) => {
-                  const v = (e.currentTarget as HTMLInputElement).value
-                  setKey(v)
-                  try {
-                    sessionStorage.setItem('tpb-ai-key', v)
-                  } catch {
-                    /* the key simply is not remembered */
-                  }
-                }}
-              />
-              <button class="btn btn-primary shrink-0" disabled={!key.trim() || !S.files.length || !!S.busy}>
-                <Icon n="spark" />
-                {tr('aiAsk')}
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
+      <AiBox />
 
       <div class="flex items-center gap-4 p-4 sm:px-6">
         <span class="grid size-11 shrink-0 place-items-center rounded-2xl bg-teal-50 text-teal-700"><Icon n="table" /></span>

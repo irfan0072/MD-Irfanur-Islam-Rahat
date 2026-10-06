@@ -1,4 +1,5 @@
 import { fmtDate, setI18nLang, tr } from './i18n'
+import { AI_MODELS, AiError, PROVIDER_NAME, askAi } from './lib/ai'
 import { BuildError, SealError, checkPages, sealPageSet } from './lib/build'
 import { findExpiry, isRealDate, pickPairs, suggest, type Suggestion } from './lib/match'
 import { formatSize, hashBytes, inspectPdf, isImageBytes, isPdfBytes } from './lib/pdf'
@@ -569,13 +570,16 @@ export async function generate() {
 
 // ------------------------------------------------------------------ AI help
 
-/** Asks the AI to sort the files. Existing matches and typed dates are never overwritten. */
-export async function aiAssist(apiKey: string) {
-  if (!S.tender || !S.files.length || S.busy || !apiKey.trim()) return
-  set({ busy: { label: 'thinking', done: 1, total: 3 } }, false)
+/**
+ * Asks the chosen AI model to sort the files. Existing matches and typed dates are never overwritten,
+ * and on any failure nothing is changed.
+ */
+export async function aiAssist(modelId: string, apiKey: string) {
+  const model = AI_MODELS.find((m) => m.id === modelId)
+  if (!model || !S.tender || !S.files.length || S.busy || !apiKey.trim()) return
+  set({ busy: { label: 'thinking', done: 0, total: 0 } }, false)
   try {
-    const { askAi } = await import('./lib/ai')
-    const picks = await askAi(apiKey.trim(), S.tender, S.reqs, S.files)
+    const picks = await askAi(model.id, apiKey.trim(), S.tender, S.reqs, S.files)
     const matches = { ...S.matches }
     const expiry = { ...S.expiry }
     const autoDate = { ...S.autoDate }
@@ -583,7 +587,7 @@ export async function aiAssist(apiKey: string) {
     const deadline = S.tender.submission_deadline
     // When two files fit one document, the one that is still valid goes first.
     const rank = (d: string) => (!d ? 1 : d >= deadline ? 0 : 2)
-    picks.sort((a, b) => rank(a.expiry_date) - rank(b.expiry_date))
+    picks.sort((x, y) => rank(x.expiry_date) - rank(y.expiry_date))
     let n = 0
     let d = 0
     for (const p of picks) {
@@ -608,8 +612,8 @@ export async function aiAssist(apiKey: string) {
     toast(tr('aiDone', { n, d }), 'ok', true)
   } catch (e) {
     set({ busy: null }, false)
-    const kind = (e as { kind?: string })?.kind
-    toast(tr((['key', 'limit', 'refused', 'network'].includes(kind ?? '') ? `ai_${kind}` : 'ai_other') as Parameters<typeof tr>[0]), 'bad')
+    const kind = e instanceof AiError ? e.kind : 'other'
+    toast(tr(`ai_${kind}`, { p: PROVIDER_NAME[model.provider], m: model.label }), 'bad')
   }
 }
 
