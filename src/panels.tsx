@@ -10,26 +10,86 @@ import {
 } from './store'
 import type { SealPages, SealPos } from './types'
 
-function Modal({ onClose, children, wide, label, z = 'z-40' }: { onClose: () => void; children: ComponentChildren; wide?: boolean; label: string; z?: string }) {
+/** Open dialogs, bottom to top. Only the top one answers the keyboard and can hold focus. */
+const stack: HTMLElement[] = []
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+/** Everything behind the top dialog is switched off for mouse, keyboard and screen readers. */
+function syncInert() {
+  document.querySelectorAll<HTMLElement>('[data-bg]').forEach((el) => el.toggleAttribute('inert', stack.length > 0))
+  stack.forEach((el, i) => el.toggleAttribute('inert', i !== stack.length - 1))
+}
+
+function Modal({ onClose, children, wide, label, z = 'z-40', fallback }: {
+  onClose: () => void
+  children: ComponentChildren
+  wide?: boolean
+  label: string
+  z?: string
+  /** Where focus goes on close when the button that opened the dialog no longer exists. */
+  fallback?: string
+}) {
+  const root = useRef<HTMLDivElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
+  const close = useRef(onClose)
+  close.current = onClose
   useEffect(() => {
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', key)
+    const el = root.current!
+    const trigger = document.activeElement as HTMLElement | null
+    stack.push(el)
+    syncInert()
+    panel.current?.focus()
+    const key = (e: KeyboardEvent) => {
+      if (stack[stack.length - 1] !== el) return
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        close.current()
+        return
+      }
+      if (e.key !== 'Tab') return
+      const items = [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((x) => x.offsetParent !== null)
+      const active = document.activeElement
+      if (!items.length) {
+        e.preventDefault()
+        panel.current?.focus()
+      } else if (!el.contains(active) || active === panel.current) {
+        e.preventDefault()
+        items[e.shiftKey ? items.length - 1 : 0].focus()
+      } else if (e.shiftKey && active === items[0]) {
+        e.preventDefault()
+        items[items.length - 1].focus()
+      } else if (!e.shiftKey && active === items[items.length - 1]) {
+        e.preventDefault()
+        items[0].focus()
+      }
+    }
+    window.addEventListener('keydown', key, true)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
-      window.removeEventListener('keydown', key)
+      window.removeEventListener('keydown', key, true)
       document.body.style.overflow = prev
+      const i = stack.indexOf(el)
+      if (i >= 0) stack.splice(i, 1)
+      syncInert()
+      // Wait for the screen to settle: the choice made in the dialog may have replaced the opening button.
+      setTimeout(() => {
+        const back = trigger?.isConnected && trigger !== document.body ? trigger : fallback ? document.querySelector<HTMLElement>(fallback) : null
+        back?.focus()
+      })
     }
   }, [])
   return (
     <div
+      ref={root}
       class={`a-fade fixed inset-0 ${z} flex items-end justify-center bg-slate-900/55 backdrop-blur-sm sm:items-center sm:p-5`}
       onClick={(e) => e.target === e.currentTarget && onClose()}
       role="dialog"
       aria-modal="true"
       aria-label={label}
     >
-      <div class={`a-sheet flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl ${wide ? 'sm:max-w-4xl' : 'sm:max-w-xl'}`}>
+      <div ref={panel} tabIndex={-1} class={`a-sheet flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl outline-none sm:rounded-3xl ${wide ? 'sm:max-w-4xl' : 'sm:max-w-xl'}`}>
         {children}
       </div>
     </div>
@@ -60,7 +120,7 @@ export function PickerModal({ reqId, onClose, onView }: { reqId: string; onClose
   const rank = (id: string) => (id === current ? 0 : id === sug ? 1 : reqOfFile(id) ? 3 : 2)
   const files = [...S.files].sort((a, b) => rank(a.id) - rank(b.id))
   return (
-    <Modal onClose={onClose} label={tr('pickTitle')}>
+    <Modal onClose={onClose} label={`${tr('pickTitle')} ${reqTitle(r)}`} fallback={`[data-testid="change-${reqId}"], [data-testid="pick-${reqId}"]`}>
       <ModalHead sub={tr('pickTitle')} title={reqTitle(r)} onClose={onClose} />
       <div class="overflow-y-auto p-3 sm:p-4" data-testid="picker">
         {!files.length && <p class="p-6 text-center font-semibold text-slate-500">{tr('pickEmpty')}</p>}
@@ -130,7 +190,7 @@ export function PreviewModal({ fileId, onClose }: { fileId: string; onClose: () 
   if (!f) return null
   const used = reqOfFile(f.id)
   return (
-    <Modal onClose={onClose} wide label={f.name} z="z-50">
+    <Modal onClose={onClose} wide label={`${tr('view')}: ${f.name}`} z="z-50">
       <ModalHead title={f.name} sub={`${pagesLabel(f.pages)}${used ? ` · ${tr('usedFor')}: ${reqTitle(used)}` : ''}`} onClose={onClose} />
       <div class="overflow-y-auto bg-slate-100 p-3 sm:p-5">
         {loading && <div class="grid place-items-center p-10 font-semibold text-slate-500"><div class="a-spin mb-3 size-9 rounded-full border-4 border-teal-100 border-t-teal-600" />{tr('loadingPreview')}…</div>}
@@ -147,8 +207,11 @@ const CONFETTI = ['#0d9488', '#f59e0b', '#10b981', '#f43f5e', '#6366f1', '#14b8a
 export function ResultModal({ onClose }: { onClose: () => void }) {
   const r = S.result!
   return (
-    <Modal onClose={onClose} label={tr('doneTitle')}>
+    <Modal onClose={onClose} label={`${tr('doneTitle')}: ${r.name}`} fallback="[data-testid=show-result]">
       <div class="relative overflow-hidden p-6 text-center sm:p-8" data-testid="result">
+        <button class="btn btn-ghost btn-sm absolute top-3 right-3 z-10 px-2" onClick={onClose} aria-label={tr('close')} title={tr('close')}>
+          <Icon n="x" class="size-6" />
+        </button>
         <div class="confetti pointer-events-none absolute inset-x-0 top-0 h-0" aria-hidden="true">
           {Array.from({ length: 22 }, (_, i) => (
             <i key={i} style={{ left: `${4 + i * 4.3}%`, background: CONFETTI[i % CONFETTI.length], animationDelay: `${(i % 7) * 90}ms` }} />
@@ -176,6 +239,10 @@ export function ResultModal({ onClose }: { onClose: () => void }) {
             {tr('again')}
           </button>
         </div>
+        <button class="btn btn-ghost mt-2.5 w-full text-slate-700" onClick={onClose} data-testid="result-close">
+          <Icon n="list" />
+          {tr('backToList')}
+        </button>
       </div>
     </Modal>
   )
@@ -241,7 +308,7 @@ export function Extras() {
             }}
           />
           {!seal && (
-            <button class="btn btn-line shrink-0" onClick={() => input.current?.click()}>
+            <button class="btn btn-line shrink-0" onClick={() => input.current?.click()} aria-label={tr('sealAdd')} title={tr('sealAdd')} data-testid="seal-add">
               <Icon n="upload" />
               <span class="hidden sm:inline">{tr('sealAdd')}</span>
             </button>
@@ -334,8 +401,9 @@ export function Extras() {
           <div class="font-bold text-slate-900">{tr('csv')}</div>
           <div class="text-sm text-slate-600">{tr('csvSub')}</div>
         </div>
-        <button class="btn btn-line shrink-0" onClick={exportCsv} data-testid="csv">
+        <button class="btn btn-line shrink-0" onClick={exportCsv} aria-label={tr('csv')} title={tr('csv')} data-testid="csv">
           <Icon n="download" />
+          <span class="hidden sm:inline">{tr('download')}</span>
         </button>
       </div>
     </section>

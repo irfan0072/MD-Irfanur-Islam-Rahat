@@ -9,6 +9,12 @@ function iso(y: number, m: number, d: number): string | null {
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
 
+/** True only for a YYYY-MM-DD string that names a day that exists (so 2026-02-31 is refused). */
+export function isRealDate(s: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
+  return !!m && iso(+m[1], +m[2], +m[3]) === s
+}
+
 /** First date written in a short piece of text, in the formats common on certificates. */
 function firstDate(s: string): string | null {
   let m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/)

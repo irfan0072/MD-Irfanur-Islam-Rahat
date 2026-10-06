@@ -31,7 +31,7 @@ export interface UFile {
 
 export type Status = 'missing' | 'need_date' | 'expired' | 'not_provided' | 'ok'
 
-export type RejectReason = 'not_pdf' | 'locked' | 'damaged' | 'too_many' | 'too_big' | 'bad_json'
+export type RejectReason = 'not_pdf' | 'locked' | 'damaged' | 'too_many' | 'too_big' | 'bad_json' | 'bad_deadline' | 'bad_fields'
 
 export interface Rejected {
   id: string

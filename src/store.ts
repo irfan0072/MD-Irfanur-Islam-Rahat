@@ -1,6 +1,6 @@
 import { fmtDate, setI18nLang, tr } from './i18n'
 import { BuildError } from './lib/build'
-import { findExpiry, pickPairs, suggest, type Suggestion } from './lib/match'
+import { findExpiry, isRealDate, pickPairs, suggest, type Suggestion } from './lib/match'
 import { formatSize, hashBytes, inspectPdf, isImageBytes, isPdfBytes } from './lib/pdf'
 import type { Lang, RejectReason, Rejected, Requirement, Result, Seal, Status, Tender, Toast, UFile } from './types'
 
@@ -277,15 +277,27 @@ export async function reset() {
 
 const asBool = (v: unknown) => v === true || v === 1 || (typeof v === 'string' && /^(true|yes|1)$/i.test(v.trim()))
 
-/** The deadline should be YYYY-MM-DD; a time part or a day-first date is still understood. */
-function toIsoDate(v: string): string {
+/** Why a tender list was refused, so the message can say what to fix. */
+export class ListError extends Error {
+  constructor(public reason: 'bad_deadline' | 'bad_fields') {
+    super(reason)
+  }
+}
+
+/**
+ * The deadline should be YYYY-MM-DD; a time part or a day-first date is still understood.
+ * Returns null when it is missing or names a day that does not exist.
+ */
+function toIsoDate(v: string): string | null {
   const s = v.trim()
   let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s)
   if (!m) {
     const d = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/.exec(s)
     if (d) m = [d[0], d[3], d[2], d[1]] as unknown as RegExpExecArray
   }
-  return m ? `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}` : s.slice(0, 10)
+  if (!m) return null
+  const out = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`
+  return isRealDate(out) ? out : null
 }
 
 /** Reads requirements.json. Throws when the file does not have the expected shape. */
@@ -312,10 +324,14 @@ export function parseRequirements(text: string): { tender: Tender; reqs: Require
   })
   // Stable sort keeps the file order for equal numbers.
   reqs.sort((a, b) => a.order - b.order)
+  // Every status and the footer depend on these two, so a list without them is refused as a whole.
+  const tenderId = String(t.tender_id ?? '').trim()
+  if (!tenderId) throw new ListError('bad_fields')
   const deadline = toIsoDate(String(t.submission_deadline ?? ''))
+  if (!deadline) throw new ListError('bad_deadline')
   return {
     tender: {
-      tender_id: String(t.tender_id ?? '').trim() || 'Tender',
+      tender_id: tenderId,
       title: String(t.title ?? ''),
       procuring_entity: String(t.procuring_entity ?? ''),
       bidder: String(t.bidder ?? ''),
@@ -378,8 +394,9 @@ export async function ingest(list: (File | Raw)[]) {
         if (S.tender?.tender_id === tender.tender_id) for (const k in S.matches) if (ids.has(k)) matches[k] = S.matches[k]
         change({ tender, reqs, matches }, false)
         listed = reqs.length
-      } catch {
-        reject(name, 'bad_json')
+      } catch (e) {
+        // Nothing was changed above, so the project that was open stays as it was.
+        reject(name, e instanceof ListError ? e.reason : 'bad_json')
       }
     } else if (!isPdfBytes(bytes)) {
       reject(name, 'not_pdf', isImageBytes(bytes) ? bytes : undefined)
@@ -514,7 +531,7 @@ export async function aiAssist(apiKey: string) {
         n++
       }
       const target = S.reqs.find((x) => matches[x.id] === f.id)
-      if (target?.has_expiry && /^\d{4}-\d{2}-\d{2}$/.test(p.expiry_date) && !expiry[f.id]) {
+      if (target?.has_expiry && isRealDate(p.expiry_date) && !expiry[f.id]) {
         expiry[f.id] = p.expiry_date
         autoDate[f.id] = true
         d++

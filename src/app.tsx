@@ -121,7 +121,7 @@ export function App() {
       <input ref={filesInput} type="file" multiple hidden onChange={onPicked} data-testid="file-input" />
       <input ref={folderInput} type="file" hidden onChange={onPicked} {...({ webkitdirectory: true } as object)} />
       <Header />
-      <main class={`mx-auto max-w-6xl px-3 sm:px-5 ${S.tender ? 'pb-44' : 'pb-16'}`}>
+      <main data-bg class={`mx-auto max-w-6xl px-3 sm:px-5 ${S.tender ? 'pb-44' : 'pb-16'}`}>
         <Stepper />
         {!S.booted ? null : !started ? (
           <Landing openFiles={openFiles} openFolder={openFolder} dragging={dragging} />
@@ -130,6 +130,7 @@ export function App() {
             {S.tender ? <TenderCard openFiles={openFiles} /> : <NeedList openFiles={openFiles} />}
             <RejectedPanel />
             <AutoBanner />
+            <JumpBar />
             <div class="grid grid-cols-1 items-start gap-4 sm:gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
               {S.tender && (
                 <section class="order-2 min-w-0 lg:order-1" aria-labelledby="req-h">
@@ -174,7 +175,7 @@ export function App() {
 function Header() {
   const started = !!S.tender || S.files.length > 0
   return (
-    <header class="glass sticky top-0 z-30 border-b border-slate-200/70">
+    <header data-bg class="glass sticky top-0 z-30 border-b border-slate-200/70">
       <div class="mx-auto flex max-w-6xl items-center gap-2 px-3 py-2 sm:gap-3 sm:px-5">
         <Logo />
         <div class="min-w-0 flex-1">
@@ -255,7 +256,7 @@ function SectionTitle({ id, n, title, meta }: { id: string; n: number; title: st
   return (
     <div class="mb-2.5 flex items-center gap-2.5 px-1">
       <span class="grid size-7 place-items-center rounded-full bg-teal-700 text-sm font-bold text-white">{num(n)}</span>
-      <h2 id={id} class="text-lg font-bold text-slate-900">{title}</h2>
+      <h2 id={id} class="scroll-mt-24 text-lg font-bold text-slate-900">{title}</h2>
       {meta && <span class="rounded-full bg-slate-200/80 px-2 py-0.5 text-xs font-bold text-slate-600">{meta}</span>}
     </div>
   )
@@ -427,6 +428,40 @@ function RejectedPanel() {
   )
 }
 
+/** One line that says what will be in the package, what is left out and what still blocks it. */
+function summaryText(): string {
+  let a = 0
+  let b = 0
+  let c = 0
+  for (const r of S.reqs) {
+    const s = statusOf(r)
+    if (s === 'ok') a++
+    else if (s === 'not_provided') b++
+    else c++
+  }
+  return tr('summary', { a, b, c })
+}
+
+/** On phones and tablets the file list sits above the documents, so these buttons jump past it. */
+function JumpBar() {
+  if (!S.tender || !S.files.length) return null
+  const next = blockers()[0]
+  return (
+    <div class="flex flex-wrap gap-2 lg:hidden" data-testid="jump">
+      <button class="btn btn-line flex-1" onClick={() => document.getElementById('req-h')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} data-testid="jump-docs">
+        <Icon n="list" />
+        {tr('reviewDocs')}
+      </button>
+      {next && (
+        <button class="btn btn-primary flex-1" onClick={() => focusReq(next.id)} data-testid="jump-fix">
+          <Icon n="arrow" />
+          {tr('fixNext')}
+        </button>
+      )}
+    </div>
+  )
+}
+
 function AutoBanner() {
   if (!S.tender) return null
   const n = openPairs().length
@@ -525,16 +560,19 @@ function ReqCard({ r, i, onPick, onView }: { r: Requirement; i: number; onPick: 
 
       <div class="mt-3 sm:pl-12">
         {f ? (
-          <div class="a-pop flex items-center gap-3 rounded-2xl bg-slate-50 p-2.5 ring-1 ring-slate-200">
+          <div class="a-pop flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-slate-50 p-2.5 ring-1 ring-slate-200">
             <Thumb f={f} onClick={() => onView(f.id)} />
-            <div class="min-w-0 flex-1">
+            <div class="min-w-[8.5rem] flex-1">
               <div class="line-clamp-2 font-semibold break-all text-slate-900" title={f.name}>{f.name}</div>
               <div class="text-xs text-slate-500">{pagesLabel(f.pages)} · {formatSize(f.size)}</div>
             </div>
-            <button class="btn btn-line btn-sm" onClick={onPick} data-testid={`change-${r.id}`}>{tr('change')}</button>
-            <button class="btn btn-ghost btn-sm px-2 text-rose-700" onClick={() => assign(r.id, null)} aria-label={tr('unmatch')} title={tr('unmatch')} data-testid={`unmatch-${r.id}`}>
-              <Icon n="x" class="size-5" />
-            </button>
+            {/* On narrow phones the two buttons drop to their own row so the file name keeps its width. */}
+            <div class="ml-auto flex items-center gap-1">
+              <button class="btn btn-line btn-sm" onClick={onPick} data-testid={`change-${r.id}`}>{tr('change')}</button>
+              <button class="btn btn-ghost btn-sm px-2 text-rose-700" onClick={() => assign(r.id, null)} aria-label={tr('unmatch')} title={tr('unmatch')} data-testid={`unmatch-${r.id}`}>
+                <Icon n="x" class="size-5" />
+              </button>
+            </div>
           </div>
         ) : (
           <div class="flex flex-wrap items-center gap-2">
@@ -576,7 +614,7 @@ function ReqCard({ r, i, onPick, onView }: { r: Requirement; i: number; onPick: 
         {hint && (
           <p class={`mt-2 text-sm ${s === 'ok' || s === 'not_provided' ? 'text-slate-500' : s === 'need_date' ? 'font-medium text-amber-800' : 'font-medium text-rose-700'}`}>
             {hint}
-            {s === 'ok' && f && S.autoDate[f.id] && <span class="ml-1 text-amber-700">{tr('autoDate')}</span>}
+            {s === 'ok' && f && S.autoDate[f.id] && <span class="mt-0.5 block text-amber-700">{tr('autoDate')}</span>}
           </p>
         )}
       </div>
@@ -587,15 +625,26 @@ function ReqCard({ r, i, onPick, onView }: { r: Requirement; i: number; onPick: 
 // -------------------------------------------------------------------- files
 
 function FilesPanel(p: { openFiles: () => void; openFolder: () => void; onView: (id: string) => void; dragging: boolean }) {
+  const [open, setOpen] = useState(false)
   const pages = S.files.reduce((a, f) => a + f.pages, 0)
   const size = S.files.reduce((a, f) => a + f.size, 0)
+  // Below the two-column layout the list is folded once the documents are known, so statuses stay close.
+  const folds = !!S.tender && S.files.length > 0
   return (
     <div class="space-y-3">
       <DropZone openFiles={p.openFiles} openFolder={p.openFolder} dragging={p.dragging} />
       {S.files.length > 0 && (
-        <p class="px-1 text-sm font-medium text-slate-600" data-testid="files-meta">{tr('filesMeta', { n: S.files.length, p: num(pages), s: formatSize(size) })}</p>
+        <div class="flex flex-wrap items-center justify-between gap-2 px-1">
+          <p class="text-sm font-medium text-slate-600" data-testid="files-meta">{tr('filesMeta', { n: S.files.length, p: num(pages), s: formatSize(size) })}</p>
+          {folds && (
+            <button class="btn btn-line btn-sm lg:hidden" aria-expanded={open} aria-controls="files-list" onClick={() => setOpen(!open)} data-testid="files-toggle">
+              <Icon n="chevron" class={`size-4 transition-transform ${open ? '-rotate-90' : 'rotate-90'}`} />
+              {open ? tr('hideFiles') : tr('showFiles', { n: S.files.length })}
+            </button>
+          )}
+        </div>
       )}
-      <ul class="space-y-2.5 lg:max-h-[calc(100dvh-25rem)] lg:overflow-y-auto lg:pr-1" data-testid="files">
+      <ul id="files-list" class={`space-y-2.5 lg:max-h-[calc(100dvh-25rem)] lg:overflow-y-auto lg:pr-1 ${folds && !open ? 'hidden lg:block' : ''}`} data-testid="files">
         {S.files.map((f, i) => (
           <FileCard key={f.id} f={f} i={i} onView={p.onView} />
         ))}
@@ -737,6 +786,7 @@ function Finish({ onShow }: { onShow: () => void }) {
           {tr('ready')}. <span class="font-medium text-slate-600">{S.stale && !S.result ? tr('stale') : tr('readySub')}</span>
         </p>
       )}
+      <p class="mt-2 text-sm font-medium text-slate-600" data-testid="summary">{summaryText()}</p>
       <div class="mt-4">
         <GenerateButton onShow={onShow} big />
       </div>
@@ -754,7 +804,7 @@ function BottomBar({ onShow }: { onShow: () => void }) {
     if (!bad) setOpen(false)
   }, [bad])
   return (
-    <div class="fixed inset-x-0 bottom-0 z-30">
+    <div data-bg class="fixed inset-x-0 bottom-0 z-30">
       {open && bad > 0 && (
         <div class="a-sheet mx-auto mb-2 max-w-2xl px-3">
           <div class="card bg-slate-50 p-3 shadow-2xl">
@@ -770,7 +820,7 @@ function BottomBar({ onShow }: { onShow: () => void }) {
       )}
       <div class="glass safe-b border-t border-slate-200 pt-2.5 shadow-[0_-10px_30px_-18px_rgb(15_23_42/.35)]">
         <div class="mx-auto flex max-w-6xl items-center gap-3 px-3 sm:px-5">
-          <svg class="size-12 shrink-0 -rotate-90" viewBox="0 0 40 40" aria-hidden="true">
+          <svg class="hidden size-12 shrink-0 -rotate-90 min-[360px]:block" viewBox="0 0 40 40" aria-hidden="true">
             <circle cx="20" cy="20" r="17" fill="none" stroke="#e2e8f0" stroke-width="5" />
             <circle
               class="ring-track" cx="20" cy="20" r="17" fill="none" stroke-width="5" stroke-linecap="round"
@@ -782,7 +832,7 @@ function BottomBar({ onShow }: { onShow: () => void }) {
               {bad ? (bad === 1 ? tr('blocked1') : tr('blocked', { n: bad })) : tr('ready')}
               {bad > 0 && <Icon n="chevron" class={`ml-1 inline size-4 transition-transform ${open ? 'rotate-90' : '-rotate-90'}`} />}
             </div>
-            <div class="hidden truncate text-xs font-medium text-slate-500 min-[420px]:block">{tr('progress', { a: good, b: total })}</div>
+            <div class="hidden truncate text-xs font-medium text-slate-500 min-[420px]:block">{summaryText()}</div>
           </button>
           <GenerateButton onShow={onShow} />
         </div>
