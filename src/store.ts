@@ -26,7 +26,7 @@ export interface State {
   rejected: Rejected[]
   withIndex: boolean
   seal: Seal | null
-  busy: { label: 'reading' | 'building'; done: number; total: number } | null
+  busy: { label: 'reading' | 'building' | 'thinking'; done: number; total: number } | null
   toast: Toast | null
   result: Result | null
   stale: boolean
@@ -482,6 +482,52 @@ export async function generate() {
   } catch (e) {
     set({ busy: null }, false)
     toast(e instanceof BuildError ? tr('buildFileErr', { f: e.fileName }) : tr('buildErr'), 'bad')
+  }
+}
+
+// ------------------------------------------------------------------ AI help
+
+/** Asks the AI to sort the files. Existing matches and typed dates are never overwritten. */
+export async function aiAssist(apiKey: string) {
+  if (!S.tender || !S.files.length || S.busy || !apiKey.trim()) return
+  set({ busy: { label: 'thinking', done: 1, total: 3 } }, false)
+  try {
+    const { askAi } = await import('./lib/ai')
+    const picks = await askAi(apiKey.trim(), S.tender, S.reqs, S.files)
+    const matches = { ...S.matches }
+    const expiry = { ...S.expiry }
+    const autoDate = { ...S.autoDate }
+    const usedHash = new Set(Object.values(matches).map((id) => fileById(id)?.hash))
+    const deadline = S.tender.submission_deadline
+    // When two files fit one document, the one that is still valid goes first.
+    const rank = (d: string) => (!d ? 1 : d >= deadline ? 0 : 2)
+    picks.sort((a, b) => rank(a.expiry_date) - rank(b.expiry_date))
+    let n = 0
+    let d = 0
+    for (const p of picks) {
+      const f = S.files[p.file_number - 1]
+      if (!f) continue
+      const r = S.reqs.find((x) => x.id === p.requirement_id)
+      if (r && !matches[r.id] && !Object.values(matches).includes(f.id) && !usedHash.has(f.hash)) {
+        matches[r.id] = f.id
+        usedHash.add(f.hash)
+        n++
+      }
+      const target = S.reqs.find((x) => matches[x.id] === f.id)
+      if (target?.has_expiry && /^\d{4}-\d{2}-\d{2}$/.test(p.expiry_date) && !expiry[f.id]) {
+        expiry[f.id] = p.expiry_date
+        autoDate[f.id] = true
+        d++
+      }
+    }
+    set({ busy: null }, false)
+    if (!n && !d) return toast(tr('aiNone'), 'info')
+    change({ matches, expiry, autoDate })
+    toast(tr('aiDone', { n, d }), 'ok', true)
+  } catch (e) {
+    set({ busy: null }, false)
+    const kind = (e as { kind?: string })?.kind
+    toast(tr((['key', 'limit', 'refused', 'network'].includes(kind ?? '') ? `ai_${kind}` : 'ai_other') as Parameters<typeof tr>[0]), 'bad')
   }
 }
 

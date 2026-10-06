@@ -5,7 +5,7 @@ import { num, pagesLabel, tr, type Key } from './i18n'
 import { Icon } from './icons'
 import { renderAll } from './lib/preview'
 import {
-  S, assign, copiesOf, copyConflict, exportCsv, fileById, formatSize, generate, openPairs, reqOfFile, reqTitle,
+  S, aiAssist, assign, copiesOf, copyConflict, exportCsv, fileById, formatSize, generate, openPairs, reqOfFile, reqTitle,
   sealFromBytes, setOption, setSeal,
 } from './store'
 import type { SealPages, SealPos } from './types'
@@ -193,8 +193,18 @@ function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
 
 const field = 'min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-[15px] font-semibold text-slate-800 outline-none transition focus:border-teal-500'
 
+/** The key is kept for this browser tab only. */
+function readKey(): string {
+  try {
+    return sessionStorage.getItem('tpb-ai-key') ?? ''
+  } catch {
+    return ''
+  }
+}
+
 export function Extras() {
   const input = useRef<HTMLInputElement>(null)
+  const [key, setKey] = useState(readKey)
   const seal = S.seal
   return (
     <section class="card a-rise divide-y divide-slate-100" aria-label={tr('extras')} data-testid="extras">
@@ -276,6 +286,46 @@ export function Extras() {
             </div>
           </div>
         )}
+      </div>
+
+      <div class="p-4 sm:px-6" data-testid="ai-box">
+        <div class="flex items-start gap-4">
+          <span class="grid size-11 shrink-0 place-items-center rounded-2xl bg-teal-50 text-teal-700"><Icon n="spark" /></span>
+          <div class="min-w-0 flex-1">
+            <div class="font-bold text-slate-900">{tr('ai')}</div>
+            <div class="text-sm text-slate-600">{tr('aiSub')}</div>
+            <form
+              class="mt-3 flex flex-col gap-2 sm:flex-row"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void aiAssist(key)
+              }}
+            >
+              <input
+                type="password"
+                class={field}
+                autocomplete="off"
+                spellcheck={false}
+                placeholder={tr('aiKeyPh')}
+                aria-label={tr('aiKeyPh')}
+                value={key}
+                onInput={(e) => {
+                  const v = (e.currentTarget as HTMLInputElement).value
+                  setKey(v)
+                  try {
+                    sessionStorage.setItem('tpb-ai-key', v)
+                  } catch {
+                    /* the key simply is not remembered */
+                  }
+                }}
+              />
+              <button class="btn btn-primary shrink-0" disabled={!key.trim() || !S.files.length || !!S.busy}>
+                <Icon n="spark" />
+                {tr('aiAsk')}
+              </button>
+            </form>
+          </div>
+        </div>
       </div>
 
       <div class="flex items-center gap-4 p-4 sm:px-6">

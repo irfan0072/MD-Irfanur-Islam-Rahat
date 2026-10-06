@@ -147,6 +147,11 @@ await sleep(500)
 await page.screenshot({ path: path.join(shots, '05-statuses-all-ok.png') })
 await page.screenshot({ path: path.join(shots, '06-statuses-full-page.png'), fullPage: true })
 
+await page.$eval('[data-testid=extras]', (e) => e.scrollIntoView({ block: 'start' }))
+await sleep(500)
+await page.screenshot({ path: path.join(shots, '06b-more-options.png') })
+check('AI help is off until a key is typed', await page.$eval('[data-testid=ai-box] button', (b) => b.disabled))
+
 // 4.9 Bangla
 await tap('[data-testid=lang-bn]')
 await sleep(900)

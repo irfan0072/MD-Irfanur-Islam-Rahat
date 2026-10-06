@@ -153,6 +153,18 @@ const en = {
   no: 'No',
   loadingPreview: 'Opening',
   total: 'Total',
+  ai: 'AI help (optional)',
+  aiSub: 'Uses your own Anthropic API key. The AI matches your files and can read scanned papers. File names, the text of the first pages and pictures of scans are sent to Anthropic. The key stays in this browser tab.',
+  aiKeyPh: 'Your API key (sk-ant-...)',
+  aiAsk: 'Ask AI',
+  thinking: 'AI is reading your files',
+  aiDone: 'AI matched {n} files and filled {d} dates. Please check them.',
+  aiNone: 'AI found nothing new to match.',
+  ai_key: 'This API key was not accepted. Please check the key.',
+  ai_limit: 'The AI service is busy or your key has reached its limit. Try again in a minute.',
+  ai_refused: 'The AI declined to read these files. Please match them yourself.',
+  ai_network: 'Could not reach the AI service. Check your internet and try again.',
+  ai_other: 'The AI could not finish. Please match the files yourself.',
 }
 
 export type Key = keyof typeof en
@@ -310,6 +322,18 @@ const bn: Record<Key, string> = {
   no: 'না',
   loadingPreview: 'খোলা হচ্ছে',
   total: 'মোট',
+  ai: 'এআই সহায়তা (ঐচ্ছিক)',
+  aiSub: 'আপনার নিজের Anthropic API key ব্যবহার হয়। এআই ফাইল মিলিয়ে দেয় এবং স্ক্যান করা কাগজও পড়তে পারে। ফাইলের নাম, প্রথম পৃষ্ঠাগুলোর লেখা ও স্ক্যানের ছবি Anthropic-এ পাঠানো হয়। Key শুধু এই ব্রাউজার ট্যাবে থাকে।',
+  aiKeyPh: 'আপনার API key (sk-ant-...)',
+  aiAsk: 'এআইকে বলুন',
+  thinking: 'এআই আপনার ফাইল পড়ছে',
+  aiDone: 'এআই {n}টি ফাইল মিলিয়েছে এবং {d}টি তারিখ বসিয়েছে। একবার দেখে নিন।',
+  aiNone: 'এআই নতুন কোনো মিল পায়নি।',
+  ai_key: 'এই API key গ্রহণ করা হয়নি। Key টি আবার দেখুন।',
+  ai_limit: 'এআই সেবা ব্যস্ত অথবা আপনার key এর সীমা শেষ। এক মিনিট পরে আবার চেষ্টা করুন।',
+  ai_refused: 'এআই এই ফাইলগুলো পড়তে রাজি হয়নি। নিজে মিলিয়ে নিন।',
+  ai_network: 'এআই সেবায় পৌঁছানো যায়নি। ইন্টারনেট দেখে আবার চেষ্টা করুন।',
+  ai_other: 'এআই কাজটি শেষ করতে পারেনি। নিজে ফাইল মিলিয়ে নিন।',
 }
 
 const dict = { en, bn }

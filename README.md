@@ -45,6 +45,7 @@ A document that expires on the same day as the submission deadline is **OK**.
 - **Save and reopen**: work is kept in the browser (IndexedDB) and restored on the next visit.
 - **Auto-match** from file names and from the title found inside the PDF.
 - **Bad files**: damaged and password-protected PDFs get a clear message instead of a crash.
+- **AI help** with the user's own Anthropic API key (optional): Claude matches the files and reads scanned papers such as `scan_0042.pdf`. The request goes straight from the browser to Anthropic; the key is kept for the browser tab only. Nothing is sent unless the user types a key and presses **Ask AI**.
 
 ## Problems found in the sample pack
 

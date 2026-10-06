@@ -53,6 +53,31 @@ export async function peek(bytes: Uint8Array): Promise<Peek> {
   return out
 }
 
+/** First page as a JPEG (base64, no data: prefix), large enough to read a scanned letter. */
+export async function pageJpeg(bytes: Uint8Array, width = 1100): Promise<string | null> {
+  try {
+    const pdfjs = await loadPdfJs()
+    const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise
+    try {
+      const page = await doc.getPage(1)
+      const base = page.getViewport({ scale: 1 })
+      const vp = page.getViewport({ scale: width / base.width })
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.ceil(vp.width)
+      canvas.height = Math.ceil(vp.height)
+      const ctx = canvas.getContext('2d')!
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      await page.render({ canvasContext: ctx, viewport: vp }).promise
+      return canvas.toDataURL('image/jpeg', 0.8).split(',')[1] ?? null
+    } finally {
+      doc.destroy()
+    }
+  } catch {
+    return null
+  }
+}
+
 /** Draws every page into the given container, one after another. Returns a cancel function. */
 export function renderAll(bytes: Uint8Array, host: HTMLElement, onCount?: (n: number) => void): () => void {
   let stop = false

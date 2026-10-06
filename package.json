@@ -10,6 +10,7 @@
     "e2e": "node scripts/e2e.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@fontsource/hind-siliguri": "^5.1.0",
     "fflate": "^0.8.2",
     "pdf-lib": "^1.17.1",
