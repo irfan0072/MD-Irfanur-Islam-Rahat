@@ -403,7 +403,8 @@ export function num(n: number | string): string {
 
 export function tr(key: Key, vars?: Record<string, string | number>): string {
   let s = dict[cur][key] ?? en[key] ?? key
-  if (vars) for (const k in vars) s = s.replace(`{${k}}`, typeof vars[k] === 'number' ? num(vars[k]) : String(vars[k]))
+  // A name may appear more than once in a sentence, so every occurrence is filled in.
+  if (vars) for (const k in vars) s = s.split(`{${k}}`).join(typeof vars[k] === 'number' ? num(vars[k]) : String(vars[k]))
   return s
 }
 

@@ -369,9 +369,9 @@ function TenderCard({ openFiles }: { openFiles: () => void }) {
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <div class="text-xs font-semibold tracking-wide text-teal-100">
-              {tr('tenderId')} · <span class="font-mono text-sm text-white">{t.tender_id}</span>
+              {tr('tenderId')} · <span class="font-mono text-sm [overflow-wrap:anywhere] text-white">{t.tender_id}</span>
             </div>
-            <h2 class="mt-1 text-xl leading-snug font-bold break-words sm:text-2xl">{t.title}</h2>
+            <h2 class="mt-1 text-xl leading-snug font-bold [overflow-wrap:anywhere] sm:text-2xl">{t.title}</h2>
           </div>
           <button class="btn btn-sm shrink-0 bg-white/15 text-white hover:bg-white/25" onClick={openFiles}>
             {tr('changeList')}
@@ -381,11 +381,11 @@ function TenderCard({ openFiles }: { openFiles: () => void }) {
       <dl class="grid gap-x-6 gap-y-3 p-5 sm:grid-cols-3 sm:p-6">
         <div>
           <dt class="text-xs font-semibold text-slate-500">{tr('entity')}</dt>
-          <dd class="font-semibold text-slate-900">{t.procuring_entity || '—'}</dd>
+          <dd class="font-semibold [overflow-wrap:anywhere] text-slate-900">{t.procuring_entity || '—'}</dd>
         </div>
         <div>
           <dt class="text-xs font-semibold text-slate-500">{tr('bidder')}</dt>
-          <dd class="font-semibold text-slate-900">{t.bidder || '—'}</dd>
+          <dd class="font-semibold [overflow-wrap:anywhere] text-slate-900">{t.bidder || '—'}</dd>
         </div>
         <div>
           <dt class="text-xs font-semibold text-slate-500">{tr('deadline')}</dt>
@@ -553,7 +553,7 @@ function ReqCard({ r, i, onPick, onView }: { r: Requirement; i: number; onPick: 
         <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-sm font-extrabold text-slate-700">{num(r.order)}</span>
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
-            <h3 class="text-[17px] leading-snug font-bold text-slate-900">{reqTitle(r)}</h3>
+            <h3 class="min-w-0 text-[17px] leading-snug font-bold [overflow-wrap:anywhere] text-slate-900">{reqTitle(r)}</h3>
             <StatusPill s={s} />
           </div>
           <div class="mt-1 flex flex-wrap gap-1.5">

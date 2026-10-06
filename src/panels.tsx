@@ -102,7 +102,7 @@ function ModalHead({ title, sub, onClose }: { title: string; sub?: string; onClo
     <div class="flex items-start gap-3 border-b border-slate-200 p-4 sm:p-5">
       <div class="min-w-0 flex-1">
         {sub && <div class="text-sm font-semibold text-slate-500">{sub}</div>}
-        <div class="text-lg leading-snug font-bold break-words text-slate-900">{title}</div>
+        <div class="text-lg leading-snug font-bold [overflow-wrap:anywhere] text-slate-900">{title}</div>
       </div>
       <button class="btn btn-ghost btn-sm px-2" onClick={onClose} aria-label={tr('close')} data-testid="modal-close">
         <Icon n="x" class="size-6" />

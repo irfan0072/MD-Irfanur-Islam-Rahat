@@ -163,7 +163,7 @@ for (const [id, provider] of MODELS) {
   await pickModel(id)
   shown.push(`${await page.$eval('[data-testid=ai-key-label]', (e) => e.textContent)}=${await page.$eval('[data-testid=ai-key]', (e) => e.value)}`)
   const target = await page.$eval('[data-testid=ai-target]', (e) => e.textContent)
-  check(`${id}: the provider and model are named before sending`, target.includes(NAMES[provider]) && target.includes(await page.$eval('[data-testid=ai-model]', (s) => s.selectedOptions[0].textContent.split(' (')[0])), target)
+  check(`${id}: the provider and model are named before sending`, !target.includes('{') && target.includes(`your ${NAMES[provider]} key`) && target.includes(await page.$eval('[data-testid=ai-model]', (s) => s.selectedOptions[0].textContent.split(' (')[0])), target)
 }
 check('choosing models and typing keys made no request to any AI service', calls.length === 0, String(calls.length))
 check('each provider keeps its own key field', shown.join(' ; ') === MODELS.map(([, p]) => `${NAMES[p]} API key=${KEYS[p]}`).join(' ; '), shown.join(' ; '))
