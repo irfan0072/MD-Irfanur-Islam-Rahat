@@ -6,7 +6,7 @@ import { Icon } from './icons'
 import { renderAll } from './lib/preview'
 import {
   S, aiAssist, assign, copiesOf, copyConflict, exportCsv, fileById, formatSize, generate, openPairs, reqOfFile, reqTitle,
-  sealFromBytes, setOption, setSeal,
+  sealFromBytes, sealIssue, sealPagesNow, setOption, setSeal,
 } from './store'
 import type { SealPages, SealPos } from './types'
 
@@ -303,8 +303,11 @@ export function Extras() {
             hidden
             data-testid="seal-input"
             onChange={async (e) => {
-              const file = (e.currentTarget as HTMLInputElement).files?.[0]
-              if (file) sealFromBytes(file.name, new Uint8Array(await file.arrayBuffer()))
+              const el = e.currentTarget as HTMLInputElement
+              const file = el.files?.[0]
+              if (file) await sealFromBytes(file.name, new Uint8Array(await file.arrayBuffer()))
+              // Cleared so the same file can be chosen again after a failed try.
+              el.value = ''
             }}
           />
           {!seal && (
@@ -343,13 +346,20 @@ export function Extras() {
               {seal.pages === 'custom' && (
                 <label class="a-rise block sm:col-span-2">
                   <span class="mb-1 block text-sm font-semibold text-slate-700">{tr('seal_custom')}</span>
-                  <input class={field} inputMode="numeric" placeholder={tr('sealCustomPh')} value={seal.custom} onInput={(e) => setSeal({ ...seal, custom: (e.currentTarget as HTMLInputElement).value })} />
+                  <input class={field} data-testid="seal-custom" placeholder={tr('sealCustomPh')} value={seal.custom} onInput={(e) => setSeal({ ...seal, custom: (e.currentTarget as HTMLInputElement).value })} />
                 </label>
               )}
               <label class="block sm:col-span-2">
                 <span class="mb-1 block text-sm font-semibold text-slate-700">{tr('sealSize')}</span>
                 <input type="range" min="0.1" max="0.4" step="0.02" value={seal.size} class="w-full accent-teal-600" onInput={(e) => setSeal({ ...seal, size: +(e.currentTarget as HTMLInputElement).value })} />
               </label>
+              {sealIssue() ? (
+                <p class="a-rise text-sm font-semibold text-rose-700 sm:col-span-2" role="alert" data-testid="seal-issue">{sealIssue()}</p>
+              ) : (
+                <p class="text-sm font-medium text-slate-600 sm:col-span-2" data-testid="seal-pages-ok">
+                  {tr('sealPagesOk', { n: sealPagesNow().length, l: sealPagesNow().slice(0, 16).map((n) => num(n)).join(', ') + (sealPagesNow().length > 16 ? ' …' : '') })}
+                </p>
+              )}
             </div>
           </div>
         )}

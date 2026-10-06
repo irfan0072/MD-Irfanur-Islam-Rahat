@@ -133,6 +133,34 @@ const unnamed = () => page.evaluate(() =>
     .filter((b) => b.offsetParent !== null && !(b.getAttribute('aria-label') || b.textContent.trim()))
     .map((b) => b.outerHTML.slice(0, 90)))
 
+/** Bytes of the package behind the Download button. */
+const grab = async () => Buffer.from(await page.evaluate(async () => {
+  const u = new Uint8Array(await (await fetch(document.querySelector('[data-testid=download]').href)).arrayBuffer())
+  let s = ''
+  for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000))
+  return btoa(s)
+}), 'base64')
+/** Reads a CSV file the strict way: quoted fields may hold commas, quotes and line breaks. */
+const parseCsv = (text) => {
+  const rows = [[]]
+  let cell = ''
+  let quoted = false
+  const t = text.replace(/^\uFEFF/, '')
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i]
+    if (quoted) {
+      if (c === '"' && t[i + 1] === '"') (cell += '"'), i++
+      else if (c === '"') quoted = false
+      else cell += c
+    } else if (c === '"') quoted = true
+    else if (c === ',') (rows[rows.length - 1].push(cell), (cell = ''))
+    else if (c === '\r' && t[i + 1] === '\n') (rows[rows.length - 1].push(cell), (cell = ''), rows.push([]), i++)
+    else cell += c
+  }
+  rows[rows.length - 1].push(cell)
+  return rows
+}
+
 const statuses = () => page.$$eval('article[data-testid^="req-"]', (els) => Object.fromEntries(els.map((e) => [e.dataset.testid.slice(4), e.dataset.status])))
 const setDate = (req, v) =>
   page.$eval(`[data-testid="date-${req}"]`, (el, val) => {
@@ -326,13 +354,48 @@ await page.screenshot({ path: path.join(shots, '08-bangla-full-page.png'), fullP
 await tap('[data-testid=lang-en]')
 await sleep(500)
 
-// bonus: seal on the cover, checked on its own build, then removed for the plain package
-const seal = await page.$('[data-testid=seal-input]')
-await seal.uploadFile(path.join(pack, 'documents/company_logo.png'))
+// bonus: seal. A damaged picture is refused, the page list is checked, and a bad list blocks the package.
+const sealInput = () => page.$('[data-testid=seal-input]')
+const brokenPng = path.join(tmp, 'broken-seal.png')
+fs.writeFileSync(brokenPng, Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.from('this is not picture data at all')]))
+const toastText = () => page.$eval('[data-testid=toast]', (e) => e.textContent).catch(() => '')
+await (await sealInput()).uploadFile(brokenPng)
+await sleep(700)
+check('seal: damaged picture refused with its own message, no seal created', !(await page.$('[data-testid=seal-box]')) && (await toastText()).includes('damaged') && (await toastText()).includes('broken-seal.png'), await toastText())
+await (await sealInput()).uploadFile(path.join(pack, 'documents/company_logo.png'))
 await page.waitForSelector('[data-testid=seal-box]')
+const goodSeal = await page.$eval('[data-testid=seal-box] img', (i) => i.src)
+await (await sealInput()).uploadFile(brokenPng)
+await sleep(700)
+check('seal: a damaged replacement keeps the earlier good seal', (await page.$eval('[data-testid=seal-box] img', (i) => i.src)) === goodSeal && (await toastText()).includes('damaged'))
+await page.$eval('[data-testid=toast] button:last-child', (b) => b.click()).catch(() => {})
+await page.select('[data-testid=seal-pages]', 'custom')
+await page.waitForSelector('[data-testid=seal-custom]')
+const typePages = async (v) => {
+  await page.$eval('[data-testid=seal-custom]', (el, val) => {
+    el.value = val
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+  }, v)
+  await sleep(200)
+  return {
+    issue: await page.$eval('[data-testid=seal-issue]', (e) => e.textContent).catch(() => ''),
+    ok: await page.$eval('[data-testid=seal-pages-ok]', (e) => e.textContent).catch(() => ''),
+    blocked: await genDisabled(),
+  }
+}
+for (const [value, words] of [['', 'Type the page numbers'], ['0', 'Page 0 does not exist'], ['99', 'pages 1 to 17'], ['abc', 'is not a page number'], ['0,999,abc', 'does not exist'], ['1-', 'is not a page number']]) {
+  const r = await typePages(value)
+  check(`seal pages "${value}": refused with a reason and the package is blocked`, r.issue.includes(words) && r.blocked && !r.ok, JSON.stringify(r))
+}
+check('seal pages: the reason is also shown next to the Make package button', (await page.$eval('[data-testid=seal-blocks]', (e) => e.textContent)).includes('is not a page number'))
+let r = await typePages('১, ৩-৫')
+check('seal pages "১, ৩-৫" (Bangla digits) = 1, 3, 4, 5', r.ok === 'Seal pages (4): 1, 3, 4, 5' && !r.blocked, JSON.stringify(r))
+r = await typePages('1 - 3')
+check('seal pages "1 - 3" = 1, 2, 3', r.ok === 'Seal pages (3): 1, 2, 3' && !r.blocked, JSON.stringify(r))
 await page.$eval('[data-testid=generate]', (b) => b.click())
 await page.waitForSelector('[data-testid=download]', { timeout: 60000 })
-const sealedSize = await page.$eval('[data-testid=download]', async (a) => (await (await fetch(a.href)).arrayBuffer()).byteLength)
+const sealedBytes = await grab()
+const sealedSize = sealedBytes.length
 await page.keyboard.press('Escape')
 await tap('[data-testid=seal-remove]')
 await sleep(300)
@@ -376,6 +439,17 @@ const body = texts.slice(2)
 check('6.2 documents in order', want.every((w, i) => body[i].toLowerCase().includes(w.toLowerCase())), body.map((t) => t.slice(0, 40)).join(' || '))
 check('6.2 valid trade license included', body[0].includes('2027-06-30'))
 check('index page shows start pages', texts[1].includes('Index') && texts[1].includes('Starts on page'))
+check('index start pages match where the documents really begin', ['1 Trade License', '3', '2 TIN Certificate', '4', '5 Experience Certificate', '7', '6 Technical Proposal', '9', '8 Signed Declaration', '17'].every((w) => texts[1].includes(w)), texts[1].slice(0, 260))
+const imageCounts = async (bytes) => {
+  const d = await pdfjs.getDocument({ data: new Uint8Array(bytes), verbosity: 0 }).promise
+  const out = []
+  for (let i = 1; i <= d.numPages; i++) out.push((await (await d.getPage(i)).getOperatorList()).fnArray.filter((f) => f === pdfjs.OPS.paintImageXObject).length)
+  return out
+}
+const plain = await imageCounts(pdfBytes)
+const stamped = await imageCounts(sealedBytes)
+const sealedPages = stamped.map((n, i) => (n > plain[i] ? i + 1 : 0)).filter(Boolean)
+check('seal with the page list "1 - 3" is on pages 1, 2 and 3 and nowhere else', sealedPages.join() === '1,2,3', sealedPages.join())
 
 // success dialog: visible way back, then real downloads into a folder
 check('success dialog has a visible Back to checklist button', await page.$eval('[data-testid=result-close]', (b) => b.offsetParent !== null && b.textContent.trim() === 'Back to checklist'))
@@ -400,9 +474,21 @@ check('4.8 PDF download completes with the exact name and the same bytes', gotPd
 await page.keyboard.press('Escape')
 await sleep(300)
 await tap('[data-testid=csv]')
+const csvFile = path.join(dl, 'T-2026-0417_Checklist.csv')
 const gotCsv = await waitFile('T-2026-0417_Checklist.csv')
-const csv = gotCsv ? fs.readFileSync(path.join(dl, 'T-2026-0417_Checklist.csv'), 'utf8') : ''
-check('checklist download completes', gotCsv && csv.charCodeAt(0) === 0xfeff && csv.includes('"Trade License"') && csv.includes('"trade_license_2026.pdf"') && csv.includes('"2027-06-30"') && csv.includes('"Not provided"'), csv.split('\r\n')[1])
+const csv = gotCsv ? fs.readFileSync(csvFile, 'utf8') : ''
+const en = parseCsv(csv)
+check('checklist (English): downloaded, UTF-8 mark, 7 columns, 10 rows', gotCsv && csv.charCodeAt(0) === 0xfeff && en.length === 11 && en.every((row) => row.length === 7) && en[0].join('|') === 'No.|Document|Required|File name|Pages|Expiry date|Status', en[0].join('|'))
+check('checklist (English): files, pages, dates and statuses match the screen', en[1].join('|') === '1|Trade License|Yes|trade_license_2026.pdf|1|2027-06-30|OK' && en[4].join('|') === '4|Bank Solvency Certificate|Yes|bank_solvency.pdf|1|2026-12-31|OK' && en[6].join('|') === '6|Audited Financial Statement|No||||Not provided' && en[8].join('|') === '8|Technical Proposal|Yes|02_technical_proposal.pdf|6||OK', en.slice(1).map((x) => x.join('|')).join(' // '))
+fs.rmSync(csvFile)
+await tap('[data-testid=lang-bn]')
+await sleep(700)
+await tap('[data-testid=csv]')
+const gotBn = await waitFile('T-2026-0417_Checklist.csv')
+const bn = parseCsv(gotBn ? fs.readFileSync(csvFile, 'utf8') : '')
+check('checklist (Bangla): headers, titles and statuses in Bangla, same data', gotBn && bn.length === 11 && bn[0].join('|') === 'ক্রম|নথি|আবশ্যক|ফাইলের নাম|পৃষ্ঠা|মেয়াদ শেষের তারিখ|অবস্থা' && bn[1].join('|') === '1|ট্রেড লাইসেন্স|হ্যাঁ|trade_license_2026.pdf|1|2027-06-30|ঠিক আছে' && bn[7].join('|') === '7|প্রস্তুতকারকের অনুমোদনপত্র|না||||দেওয়া হয়নি', bn.slice(0, 2).map((x) => x.join('|')).join(' // '))
+await tap('[data-testid=lang-en]')
+await sleep(500)
 
 // tablet and phones: no sideways scroll, statuses close to the top, every control named
 for (const [w, h, mobile, shot] of [[768, 1024, false, '10-tablet'], [390, 844, true, '11-phone'], [320, 740, true, '12-small-phone']]) {

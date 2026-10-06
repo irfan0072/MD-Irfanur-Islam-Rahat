@@ -5,7 +5,7 @@ import { Icon, Logo } from './icons'
 import { Extras, PickerModal, PreviewModal, ResultModal } from './panels'
 import {
   S, assign, autoMatch, blockers, boot, clearToast, copiesOf, copyConflict, dismissRejected, fileById, formatSize,
-  generate, ingest, loadSample, openPairs, removeFile, reqOfFile, reqTitle, reset, sealFromBytes, setExpiry, setLang,
+  generate, ingest, loadSample, openPairs, removeFile, reqOfFile, reqTitle, reset, sealFromBytes, sealIssue, setExpiry, setLang,
   statusOf, subscribe, undo,
 } from './store'
 import type { Lang, Requirement, Status, UFile } from './types'
@@ -133,6 +133,12 @@ export function App() {
           <Landing openFiles={openFiles} openFolder={openFolder} dragging={dragging} />
         ) : (
           <div class="space-y-4 sm:space-y-5">
+            {S.unsaved && (
+              <div class="card a-rise flex items-start gap-3 border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-950" role="alert" data-testid="save-warning">
+                <Icon n="alert" class="mt-0.5 size-5 text-amber-600" />
+                <span>{tr('saveFailed')}</span>
+              </div>
+            )}
             {S.tender ? <TenderCard openFiles={openFiles} /> : <NeedList openFiles={openFiles} />}
             <RejectedPanel />
             <AutoBanner />
@@ -416,9 +422,7 @@ function RejectedPanel() {
             {r.image && (
               <button
                 class="btn btn-soft btn-sm"
-                onClick={() => {
-                  if (sealFromBytes(r.name, r.image!)) dismissRejected(r.id)
-                }}
+                onClick={() => void sealFromBytes(r.name, r.image!).then((ok) => ok && dismissRejected(r.id))}
               >
                 <Icon n="stamp" class="size-4" />
                 {tr('useAsSeal')}
@@ -748,8 +752,11 @@ function BlockerList({ compact }: { compact?: boolean }) {
   )
 }
 
+const showSeal = () => document.querySelector('[data-testid=seal-box]')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+
 function GenerateButton({ onShow, big }: { onShow: () => void; big?: boolean }) {
-  const blocked = blockers().length > 0
+  // A seal that cannot be placed as chosen blocks too: the package is never made silently without it.
+  const blocked = blockers().length > 0 || !!sealIssue()
   if (S.result && !blocked) {
     return (
       <button class={`btn btn-primary a-glow ${big ? 'min-h-14 w-full px-8 text-lg sm:w-auto' : 'shrink-0'}`} onClick={onShow} data-testid={big ? 'show-result' : undefined}>
@@ -774,8 +781,9 @@ function GenerateButton({ onShow, big }: { onShow: () => void; big?: boolean }) 
 
 function Finish({ onShow }: { onShow: () => void }) {
   const n = blockers().length
+  const seal = sealIssue()
   return (
-    <section class={`card a-rise p-5 sm:p-6 ${n ? '' : 'border-emerald-300 bg-gradient-to-br from-emerald-50 to-teal-50'}`} aria-labelledby="fin-h" data-testid="finish">
+    <section class={`card a-rise p-5 sm:p-6 ${n || seal ? '' : 'border-emerald-300 bg-gradient-to-br from-emerald-50 to-teal-50'}`} aria-labelledby="fin-h" data-testid="finish">
       <SectionTitle id="fin-h" n={4} title={tr('s4')} />
       {n > 0 ? (
         <>
@@ -784,6 +792,11 @@ function Finish({ onShow }: { onShow: () => void }) {
           </p>
           <BlockerList />
         </>
+      ) : seal ? (
+        <div class="flex flex-wrap items-center gap-2 rounded-xl bg-white p-2 pl-3 text-sm ring-1 ring-slate-200" data-testid="seal-blocks">
+          <span class="min-w-0 flex-1 font-semibold text-rose-800">{seal}</span>
+          <button class="btn btn-soft btn-sm" onClick={showSeal}>{tr('fix')}</button>
+        </div>
       ) : (
         <p class="flex items-center gap-2 text-lg font-bold text-emerald-800">
           <span class="a-pop grid size-8 place-items-center rounded-full bg-emerald-500 text-white">
@@ -805,6 +818,7 @@ function BottomBar({ onShow }: { onShow: () => void }) {
   const total = S.reqs.length
   const bad = blockers().length
   const good = total - bad
+  const seal = bad ? null : sealIssue()
   const C = 2 * Math.PI * 17
   useEffect(() => {
     if (!bad) setOpen(false)
@@ -830,12 +844,12 @@ function BottomBar({ onShow }: { onShow: () => void }) {
             <circle cx="20" cy="20" r="17" fill="none" stroke="#e2e8f0" stroke-width="5" />
             <circle
               class="ring-track" cx="20" cy="20" r="17" fill="none" stroke-width="5" stroke-linecap="round"
-              stroke={bad ? '#f59e0b' : '#10b981'} stroke-dasharray={C} stroke-dashoffset={C * (1 - (total ? good / total : 0))}
+              stroke={bad || seal ? '#f59e0b' : '#10b981'} stroke-dasharray={C} stroke-dashoffset={C * (1 - (total ? good / total : 0))}
             />
           </svg>
-          <button class="min-w-0 flex-1 text-left" onClick={() => bad && setOpen(!open)} aria-expanded={open} disabled={!bad} data-testid="bar-status">
-            <div class={`text-[15px] leading-tight font-bold sm:text-base ${bad ? 'text-rose-800' : 'text-emerald-800'}`}>
-              {bad ? (bad === 1 ? tr('blocked1') : tr('blocked', { n: bad })) : tr('ready')}
+          <button class="min-w-0 flex-1 text-left" onClick={() => (bad ? setOpen(!open) : seal && showSeal())} aria-expanded={open} disabled={!bad && !seal} data-testid="bar-status">
+            <div class={`text-[15px] leading-tight font-bold sm:text-base ${bad || seal ? 'text-rose-800' : 'text-emerald-800'}`}>
+              {bad ? (bad === 1 ? tr('blocked1') : tr('blocked', { n: bad })) : seal ? tr('sealBlocks') : tr('ready')}
               {bad > 0 && <Icon n="chevron" class={`ml-1 inline size-4 transition-transform ${open ? 'rotate-90' : '-rotate-90'}`} />}
             </div>
             <div class="hidden truncate text-xs font-medium text-slate-500 min-[420px]:block">{summaryText()}</div>

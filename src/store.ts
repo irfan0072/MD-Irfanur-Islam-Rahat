@@ -1,5 +1,5 @@
 import { fmtDate, setI18nLang, tr } from './i18n'
-import { BuildError } from './lib/build'
+import { BuildError, SealError, checkPages, sealPageSet } from './lib/build'
 import { findExpiry, isRealDate, pickPairs, suggest, type Suggestion } from './lib/match'
 import { formatSize, hashBytes, inspectPdf, isImageBytes, isPdfBytes } from './lib/pdf'
 import type { Lang, RejectReason, Rejected, Requirement, Result, Seal, Status, Tender, Toast, UFile } from './types'
@@ -32,6 +32,8 @@ export interface State {
   stale: boolean
   past: Snap[]
   booted: boolean
+  /** true once the browser refused to store the work; shown as a standing warning */
+  unsaved: boolean
 }
 
 function startLang(): Lang {
@@ -61,6 +63,7 @@ const fresh = (): State => ({
   stale: false,
   past: [],
   booted: false,
+  unsaved: false,
 })
 
 export let S: State = fresh()
@@ -253,14 +256,76 @@ export function setSeal(seal: Seal | null) {
   change({ seal }, false)
 }
 
-export function sealFromBytes(name: string, bytes: Uint8Array): boolean {
+/**
+ * Opens the picture the way the browser shows it and redraws it as a plain PNG.
+ * A damaged file fails here, at the moment it is chosen, instead of later inside the PDF.
+ */
+async function cleanSealImage(bytes: Uint8Array): Promise<Uint8Array | null> {
+  try {
+    const bmp = await createImageBitmap(new Blob([bytes as BlobPart]))
+    if (!bmp.width || !bmp.height) return null
+    // Phone photos can be huge; a seal never needs more than this.
+    const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(bmp.width * k))
+    canvas.height = Math.max(1, Math.round(bmp.height * k))
+    canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height)
+    bmp.close()
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'))
+    return blob ? new Uint8Array(await blob.arrayBuffer()) : null
+  } catch {
+    return null
+  }
+}
+
+/** Sets the seal picture. On any failure the seal that was there before stays untouched. */
+export async function sealFromBytes(name: string, bytes: Uint8Array): Promise<boolean> {
   if (!isImageBytes(bytes)) {
     toast(tr('sealBad'), 'bad')
     return false
   }
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart]))
-  setSeal({ name, bytes, url, pages: S.seal?.pages ?? 'cover', custom: S.seal?.custom ?? '', pos: S.seal?.pos ?? 'br', size: S.seal?.size ?? 0.2 })
+  const png = await cleanSealImage(bytes)
+  if (!png) {
+    toast(tr('sealBroken', { f: name }), 'bad')
+    return false
+  }
+  const url = URL.createObjectURL(new Blob([png as BlobPart], { type: 'image/png' }))
+  setSeal({ name, bytes: png, url, pages: S.seal?.pages ?? 'cover', custom: S.seal?.custom ?? '', pos: S.seal?.pos ?? 'br', size: S.seal?.size ?? 0.2 })
   return true
+}
+
+/** Page count of the package as it would be made now, and the last page of each included document. */
+function packageLayout(): { total: number; last: number[] } {
+  let page = 1 + (S.withIndex ? 1 : 0)
+  const last: number[] = []
+  for (const r of S.reqs) {
+    const f = fileById(S.matches[r.id])
+    if (!f) continue
+    page += f.pages
+    last.push(page)
+  }
+  return { total: page, last }
+}
+
+/** Why the seal cannot be applied as chosen, or null. While this is set the package is not made. */
+export function sealIssue(): string | null {
+  const seal = S.seal
+  if (!seal) return null
+  const { total, last } = packageLayout()
+  if (seal.pages === 'last' && !last.length) return tr('sealNoDocs')
+  if (seal.pages !== 'custom') return null
+  const c = checkPages(seal.custom, total)
+  if (c.ok) return null
+  if (c.reason === 'bad') return tr('sealPagesBad', { t: c.token ?? '' })
+  if (c.reason === 'range') return tr('sealPagesRange', { n: c.token ?? '', m: total })
+  return tr('sealPagesEmpty')
+}
+
+/** The package pages that will carry the seal, in order. */
+export function sealPagesNow(): number[] {
+  if (!S.seal) return []
+  const { total, last } = packageLayout()
+  return [...sealPageSet(S.seal.pages, S.seal.custom, total, last)].sort((a, b) => a - b)
 }
 
 export async function reset() {
@@ -471,7 +536,7 @@ export async function loadSample() {
 export const packageName = () => `${(S.tender?.tender_id ?? 'Tender').replace(/[\\/:*?"<>|\s]+/g, '-')}_Package.pdf`
 
 export async function generate() {
-  if (!S.tender || blockers().length || S.busy) return
+  if (!S.tender || blockers().length || sealIssue() || S.busy) return
   set({ busy: { label: 'building', done: 0, total: 1 } }, false)
   try {
     const [{ buildPackage }, { renderText }] = await Promise.all([import('./lib/build'), import('./lib/textimg')])
@@ -498,7 +563,7 @@ export async function generate() {
     }, false)
   } catch (e) {
     set({ busy: null }, false)
-    toast(e instanceof BuildError ? tr('buildFileErr', { f: e.fileName }) : tr('buildErr'), 'bad')
+    toast(e instanceof BuildError ? tr('buildFileErr', { f: e.fileName }) : e instanceof SealError ? tr(e.kind === 'image' ? 'sealUnusable' : 'sealPagesEmpty') : tr('buildErr'), 'bad')
   }
 }
 
@@ -597,9 +662,12 @@ async function kv<T>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRe
       tx.onabort = () => rej(tx.error)
     })
   } catch {
+    // A write that fails (storage full, blocked or switched off) is remembered so the user can be told.
+    if (mode === 'readwrite') writeFailed = true
     return undefined
   }
 }
+let writeFailed = false
 const kvGet = <T,>(k: string) => kv<T>('readonly', (s) => s.get(k) as IDBRequest<T>)
 const kvSet = (k: string, v: unknown) => kv('readwrite', (s) => void s.put(v, k))
 const kvDel = (k: string) => kv('readwrite', (s) => void s.delete(k))
@@ -630,6 +698,8 @@ async function save() {
     withIndex: S.withIndex,
     seal: S.seal ? { name: S.seal.name, pages: S.seal.pages, custom: S.seal.custom, pos: S.seal.pos, size: S.seal.size } : null,
   })
+  // A toast would be replaced by the next message; a save that failed stays on screen.
+  if (writeFailed && !S.unsaved) set({ unsaved: true }, false)
 }
 
 /** Restores the previous session, if there is one. */

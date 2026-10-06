@@ -61,18 +61,73 @@ function isoOf(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-/** "1, 3-5" -> page numbers. Accepts Bangla digits too. */
-export function parsePages(s: string, total: number): Set<number> {
-  const out = new Set<number>()
-  const ascii = s.replace(/[০-৯]/g, (c) => String(c.charCodeAt(0) - 0x09e6))
-  for (const part of ascii.split(/[,;\s]+/)) {
-    const m = /^(\d+)(?:\s*[-–]\s*(\d+))?$/.exec(part.trim())
-    if (!m) continue
+/** Thrown when the seal cannot be applied as asked, so the package is never made without it. */
+export class SealError extends Error {
+  constructor(public kind: 'image' | 'pages') {
+    super(`seal ${kind}`)
+  }
+}
+
+export interface PageCheck {
+  ok: boolean
+  pages: Set<number>
+  reason?: 'empty' | 'bad' | 'range'
+  /** the piece of text, or the page number, that was refused */
+  token?: string
+}
+
+/**
+ * Reads a page list such as "1, 3-5", "1 - 3" or "১, ৩-৫".
+ * Anything that is not a page of this package is refused as a whole; nothing is dropped quietly.
+ */
+export function checkPages(s: string, total: number): PageCheck {
+  const pages = new Set<number>()
+  const text = s
+    .replace(/[০-৯]/g, (c) => String(c.charCodeAt(0) - 0x09e6))
+    // Spaces around a dash belong to the range, so they must go before the list is split on spaces.
+    .replace(/\s*[-–—]\s*/g, '-')
+    .trim()
+  if (!text) return { ok: false, pages, reason: 'empty' }
+  for (const part of text.split(/[\s,;،]+/).filter(Boolean)) {
+    const m = /^(\d+)(?:-(\d+))?$/.exec(part)
+    if (!m) return { ok: false, pages, reason: 'bad', token: part }
     const a = +m[1]
     const b = m[2] ? +m[2] : a
-    for (let i = Math.min(a, b); i <= Math.max(a, b) && i <= total; i++) if (i >= 1) out.add(i)
+    const lo = Math.min(a, b)
+    const hi = Math.max(a, b)
+    if (lo < 1) return { ok: false, pages, reason: 'range', token: String(lo) }
+    if (hi > total) return { ok: false, pages, reason: 'range', token: String(hi) }
+    for (let i = lo; i <= hi; i++) pages.add(i)
   }
-  return out
+  return pages.size ? { ok: true, pages } : { ok: false, pages, reason: 'empty' }
+}
+
+/** Package pages (counted from 1) that get the seal. Empty when the choice names no page. */
+export function sealPageSet(mode: SealPages, custom: string, total: number, lastPages: number[]): Set<number> {
+  if (mode === 'all') return new Set(Array.from({ length: total }, (_, i) => i + 1))
+  if (mode === 'cover') return new Set([1])
+  if (mode === 'last') return new Set(lastPages)
+  const c = checkPages(custom, total)
+  return c.ok ? c.pages : new Set()
+}
+
+/**
+ * Where the seal goes on one page, measured from the visible bottom-left corner.
+ * The picture keeps its proportions, always fits inside the page and never reaches into the footer strip.
+ */
+export function sealRect(f: { w: number; h: number; band: number }, imgW: number, imgH: number, pos: SealPos, size: number) {
+  const gap = Math.min(f.w, f.h - f.band) * 0.05
+  const maxW = Math.max(1, f.w - 2 * gap)
+  const maxH = Math.max(1, f.h - f.band - 2 * gap)
+  let w = f.w * size
+  let h = (w * imgH) / imgW
+  // A very tall or very wide picture is shrunk as a whole; it is never stretched or cut.
+  const k = Math.min(1, maxW / w, maxH / h)
+  w *= k
+  h *= k
+  const u = pos === 'br' || pos === 'tr' ? f.w - gap - w : pos === 'bl' || pos === 'tl' ? gap : (f.w - w) / 2
+  const v = pos === 'tr' || pos === 'tl' ? f.h - gap - h : pos === 'c' ? f.band + (f.h - f.band - h) / 2 : f.band + gap
+  return { u, v, w, h }
 }
 
 interface Frame {
@@ -379,24 +434,22 @@ export async function buildPackage(o: BuildOpts): Promise<BuildResult> {
   // ---- seal or signature (bonus) -------------------------------------------
   if (o.seal) {
     const b = o.seal.bytes
-    const img = b[0] === 0xff && b[1] === 0xd8 ? await out.embedJpg(b) : await out.embedPng(b)
-    let chosen: Set<number>
-    if (o.seal.pages === 'all') chosen = new Set(pages.map((_, i) => i + 1))
-    else if (o.seal.pages === 'cover') chosen = new Set([1])
-    else if (o.seal.pages === 'last') chosen = new Set(starts.map((s, i) => s + counts[i] - 1))
-    else chosen = parsePages(o.seal.custom, total)
+    let img: PDFImage
+    try {
+      img = b[0] === 0xff && b[1] === 0xd8 ? await out.embedJpg(b) : await out.embedPng(b)
+    } catch {
+      throw new SealError('image')
+    }
+    const chosen = sealPageSet(o.seal.pages, o.seal.custom, total, starts.map((s, i) => s + counts[i] - 1))
+    // A seal that was asked for must land on at least one page; otherwise the user is told, not handed a bare package.
+    if (!chosen.size) throw new SealError('pages')
     for (const n of chosen) {
       const page = pages[n - 1]
       const f = frames[n - 1]
       if (!page || !f) continue
-      const sw = f.w * o.seal.size
-      const sh = (sw * img.height) / img.width
-      const gap = f.w * 0.06
-      const pos = o.seal.pos
-      const u = pos === 'br' || pos === 'tr' ? f.w - gap - sw : pos === 'bl' || pos === 'tl' ? gap : (f.w - sw) / 2
-      const v = pos === 'tr' || pos === 'tl' ? f.h - gap - sh : pos === 'c' ? (f.h - sh) / 2 : f.band + gap * 0.5
-      const p = f.toUser(u, v)
-      page.drawImage(img, { x: p.x, y: p.y, width: sw, height: sh, rotate: degrees(f.rot), opacity: 0.92 })
+      const r = sealRect(f, img.width, img.height, o.seal.pos, o.seal.size)
+      const p = f.toUser(r.u, r.v)
+      page.drawImage(img, { x: p.x, y: p.y, width: r.w, height: r.h, rotate: degrees(f.rot), opacity: 0.92 })
     }
   }
 
