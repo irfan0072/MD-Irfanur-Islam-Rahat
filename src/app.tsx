@@ -52,7 +52,7 @@ export function focusReq(id: string) {
 function switchLang(l: Lang) {
   if (l === S.lang) return
   const doc = document as Document & { startViewTransition?: (cb: () => Promise<void>) => unknown }
-  if (doc.startViewTransition) doc.startViewTransition(() => new Promise<void>((r) => (setLang(l), requestAnimationFrame(() => r()))))
+  if (doc.startViewTransition) doc.startViewTransition(() => new Promise<void>((r) => (setLang(l), setTimeout(r, 0))))
   else setLang(l)
 }
 
@@ -130,9 +130,9 @@ export function App() {
             {S.tender ? <TenderCard openFiles={openFiles} /> : <NeedList openFiles={openFiles} />}
             <RejectedPanel />
             <AutoBanner />
-            <div class="grid items-start gap-4 sm:gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+            <div class="grid grid-cols-1 items-start gap-4 sm:gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
               {S.tender && (
-                <section class="order-2 lg:order-1" aria-labelledby="req-h">
+                <section class="order-2 min-w-0 lg:order-1" aria-labelledby="req-h">
                   <SectionTitle id="req-h" n={3} title={tr('reqTitle')} meta={num(S.reqs.length)} />
                   <div class="space-y-3">
                     {S.reqs.map((r, i) => (
@@ -141,7 +141,7 @@ export function App() {
                   </div>
                 </section>
               )}
-              <section class={`order-1 lg:order-2 lg:sticky lg:top-20 ${S.tender ? '' : 'lg:col-span-2'}`} aria-labelledby="files-h">
+              <section class={`order-1 min-w-0 lg:order-2 lg:sticky lg:top-20 ${S.tender ? '' : 'lg:col-span-2'}`} aria-labelledby="files-h">
                 <SectionTitle id="files-h" n={2} title={tr('filesTitle')} meta={S.files.length ? num(S.files.length) : undefined} />
                 <FilesPanel openFiles={openFiles} openFolder={openFolder} onView={setPreview} dragging={dragging} />
               </section>
@@ -528,7 +528,7 @@ function ReqCard({ r, i, onPick, onView }: { r: Requirement; i: number; onPick: 
           <div class="a-pop flex items-center gap-3 rounded-2xl bg-slate-50 p-2.5 ring-1 ring-slate-200">
             <Thumb f={f} onClick={() => onView(f.id)} />
             <div class="min-w-0 flex-1">
-              <div class="truncate font-semibold text-slate-900" title={f.name}>{f.name}</div>
+              <div class="line-clamp-2 font-semibold break-all text-slate-900" title={f.name}>{f.name}</div>
               <div class="text-xs text-slate-500">{pagesLabel(f.pages)} · {formatSize(f.size)}</div>
             </div>
             <button class="btn btn-line btn-sm" onClick={onPick} data-testid={`change-${r.id}`}>{tr('change')}</button>
@@ -778,11 +778,11 @@ function BottomBar({ onShow }: { onShow: () => void }) {
             />
           </svg>
           <button class="min-w-0 flex-1 text-left" onClick={() => bad && setOpen(!open)} aria-expanded={open} disabled={!bad} data-testid="bar-status">
-            <div class={`truncate text-base leading-tight font-bold ${bad ? 'text-rose-800' : 'text-emerald-800'}`}>
+            <div class={`text-[15px] leading-tight font-bold sm:text-base ${bad ? 'text-rose-800' : 'text-emerald-800'}`}>
               {bad ? (bad === 1 ? tr('blocked1') : tr('blocked', { n: bad })) : tr('ready')}
               {bad > 0 && <Icon n="chevron" class={`ml-1 inline size-4 transition-transform ${open ? 'rotate-90' : '-rotate-90'}`} />}
             </div>
-            <div class="truncate text-xs font-medium text-slate-500">{tr('progress', { a: good, b: total })}</div>
+            <div class="hidden truncate text-xs font-medium text-slate-500 min-[420px]:block">{tr('progress', { a: good, b: total })}</div>
           </button>
           <GenerateButton onShow={onShow} />
         </div>

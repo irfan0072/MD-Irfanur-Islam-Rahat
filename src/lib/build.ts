@@ -366,7 +366,7 @@ export async function buildPackage(o: BuildOpts): Promise<BuildResult> {
   pages.forEach((page, i) => {
     const f = frames[i]
     const k = Math.max(0.5, f.w / A4[0])
-    const size = 9 * k
+    const size = 9.5 * k
     const text = footerText(i + 1)
     const tw = font.widthOfTextAtSize(text, size)
     const lineV = i < front ? 38 : f.band - 4 * k

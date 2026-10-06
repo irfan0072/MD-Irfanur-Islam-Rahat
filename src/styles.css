@@ -9,7 +9,7 @@
   --font-sans: "Hind Siliguri", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans Bengali", sans-serif;
 }
 
-html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; overflow-x: clip; }
 body {
   @apply bg-slate-50 text-slate-800 antialiased;
   min-height: 100dvh;
@@ -94,7 +94,7 @@ button:disabled { cursor: not-allowed; }
 .bar-run { animation: slide 1.1s ease-in-out infinite; }
 .ring-track { transition: stroke-dashoffset .6s cubic-bezier(.2, .8, .2, 1), stroke .3s; }
 
-.glass { background: rgb(255 255 255 / .82); backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px); }
+.glass { background: rgb(255 255 255 / .98); backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px); }
 .pv-page { display: block; width: 100%; height: auto; margin: 0 auto 12px; border-radius: 8px; box-shadow: 0 2px 14px rgb(15 23 42 / .18); background: #fff; }
 .thumb { @apply block shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white; aspect-ratio: 210 / 297; }
 .thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }

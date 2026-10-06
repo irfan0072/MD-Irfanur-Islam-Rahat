@@ -277,6 +277,17 @@ export async function reset() {
 
 const asBool = (v: unknown) => v === true || v === 1 || (typeof v === 'string' && /^(true|yes|1)$/i.test(v.trim()))
 
+/** The deadline should be YYYY-MM-DD; a time part or a day-first date is still understood. */
+function toIsoDate(v: string): string {
+  const s = v.trim()
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s)
+  if (!m) {
+    const d = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/.exec(s)
+    if (d) m = [d[0], d[3], d[2], d[1]] as unknown as RegExpExecArray
+  }
+  return m ? `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}` : s.slice(0, 10)
+}
+
 /** Reads requirements.json. Throws when the file does not have the expected shape. */
 export function parseRequirements(text: string): { tender: Tender; reqs: Requirement[] } {
   const j = JSON.parse(text.replace(/^﻿/, ''))
@@ -301,7 +312,7 @@ export function parseRequirements(text: string): { tender: Tender; reqs: Require
   })
   // Stable sort keeps the file order for equal numbers.
   reqs.sort((a, b) => a.order - b.order)
-  const deadline = String(t.submission_deadline ?? '').trim().slice(0, 10)
+  const deadline = toIsoDate(String(t.submission_deadline ?? ''))
   return {
     tender: {
       tender_id: String(t.tender_id ?? '').trim() || 'Tender',

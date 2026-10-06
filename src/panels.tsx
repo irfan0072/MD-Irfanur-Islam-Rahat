@@ -243,7 +243,7 @@ export function Extras() {
               <img src={seal.url} alt="" class="size-24 rounded-xl border border-slate-200 bg-white object-contain p-1" />
               <div class="flex flex-col gap-1.5">
                 <button class="btn btn-line btn-sm" onClick={() => input.current?.click()}>{tr('change')}</button>
-                <button class="btn btn-ghost btn-sm text-rose-700" onClick={() => setSeal(null)}>{tr('sealRemove')}</button>
+                <button class="btn btn-ghost btn-sm text-rose-700" onClick={() => setSeal(null)} data-testid="seal-remove">{tr('sealRemove')}</button>
               </div>
             </div>
             <div class="grid gap-3 sm:grid-cols-2">
