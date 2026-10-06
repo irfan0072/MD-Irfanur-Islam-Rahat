@@ -1,5 +1,5 @@
 // End-to-end run in a real browser: loads the sample pack, checks every rule,
-// saves screenshots and writes the final package to output/.
+// saves its screenshots to screenshots/qa/ and writes the final package to output/.
 // Usage: npm run build && npx vite preview --port 4173 & node scripts/e2e.mjs
 import fs from 'node:fs'
 import os from 'node:os'
@@ -19,7 +19,7 @@ const CHROME =
 
 const pack = path.join(root, 'docs/sample-pack')
 const docs = fs.readdirSync(path.join(pack, 'documents')).filter((f) => !f.startsWith('.')).map((f) => path.join(pack, 'documents', f))
-const shots = path.join(root, 'screenshots')
+const shots = path.join(root, 'screenshots', 'qa')
 fs.mkdirSync(shots, { recursive: true })
 fs.mkdirSync(path.join(root, 'output'), { recursive: true })
 
