@@ -93,6 +93,13 @@ export function suggest(reqs: Requirement[], files: UFile[], deadline: string): 
         const head = f.text.toLowerCase().slice(0, 700)
         const phrase = r.title_en.toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim()
         if (phrase && head.replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').includes(phrase)) textScore = 1
+        else {
+          // Not the exact title: count how many of its telling words appear near the top of the page.
+          const tt = new Set(tokens(head))
+          let hit = 0
+          for (const w of rt) if (tt.has(w)) hit += weight(w)
+          textScore = (hit / max) * 0.75
+        }
       }
       let score = Math.max(nameScore, textScore * 0.9) + Math.min(nameScore, textScore) * 0.3
       if (score < 0.45) continue
