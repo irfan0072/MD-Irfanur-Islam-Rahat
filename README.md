@@ -79,3 +79,11 @@ npm run e2e        # browser test against the preview server; rewrites output/ a
 ## Deploy
 
 `dist/` is a plain static site with relative paths, so it works on any static host. A GitHub Pages workflow is included in `.github/workflows/deploy.yml`: push to `main`, then set **Settings -> Pages -> Source** to **GitHub Actions**.
+
+
+---
+
+## Author
+# MD-Irfanur-Islam-Rahat
+**Name:** MD Irfanur Islam Rahat  
+**GitHub:** [irfan0072](https://github.com/irfan0072)
