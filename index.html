@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f5c63" />
+    <meta name="description" content="Turn your tender papers into one checked, correctly ordered PDF package. Works in your browser. Your files never leave your device." />
+    <title>Tender Package Builder</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230f766e'/%3E%3Cpath d='M20 14h16l10 10v24a4 4 0 0 1-4 4H20a4 4 0 0 1-4-4V18a4 4 0 0 1 4-4z' fill='%23fff'/%3E%3Cpath d='m24 35 5 5 10-11' fill='none' stroke='%230f766e' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <style>
+      /* First paint before the app code arrives. */
+      body { margin: 0; background: #f4f8f8; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+      .boot { min-height: 100vh; display: grid; place-items: center; color: #0f5c63; }
+      .boot b { display: block; font-size: 20px; margin-top: 14px; }
+      .boot i { display: block; width: 44px; height: 44px; margin: 0 auto; border-radius: 50%; border: 4px solid #cfe5e4; border-top-color: #0f766e; animation: bootspin .8s linear infinite; }
+      @keyframes bootspin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <div id="app"><div class="boot"><div><i></i><b>Tender Package Builder</b></div></div></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
