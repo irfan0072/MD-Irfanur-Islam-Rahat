@@ -39,7 +39,51 @@ await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 })
 await page.goto(URL_, { waitUntil: 'networkidle0' })
 await page.waitForSelector('[data-testid=dropzone]')
 await sleep(900)
+check('start screen leaves as soon as the app is ready', await page.evaluate(() => !document.getElementById('boot')))
 await page.screenshot({ path: path.join(shots, '01-start.png') })
+
+// ---- start screen: looks, Bangla, reduced motion, and the way out when the app cannot start
+{
+  const isApp = (u) => /\/assets\/index-[^/]+\.js$/.test(u)
+  const stuck = await browser.newPage()
+  await stuck.setViewport({ width: 1440, height: 900 })
+  await stuck.setRequestInterception(true)
+  // The app code never arrives on this page, so the start screen stays up.
+  stuck.on('request', (r) => (isApp(r.url()) ? null : r.continue()))
+  // A module script that never arrives also holds back DOMContentLoaded, so do not wait for the navigation.
+  stuck.goto(URL_).catch(() => {})
+  await stuck.waitForSelector('#boot', { timeout: 10000 })
+  await sleep(700)
+  check('start screen: announced as loading, no recovery shown at first', await stuck.evaluate(() => {
+    const b = document.getElementById('boot')
+    return b.getAttribute('role') === 'status' && b.getAttribute('aria-busy') === 'true' && document.getElementById('bl-label').textContent.includes('Opening') && document.getElementById('boot-help').hidden
+  }))
+  await stuck.screenshot({ path: path.join(shots, '00-start-screen.png') })
+  await stuck.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+  check('start screen: reduced motion stops every animation and shows the finished tick', await stuck.evaluate(() =>
+    ['.bl-check', '.bl-mark svg', '.bl-bar i'].every((q) => getComputedStyle(document.querySelector(q)).animationName === 'none') && getComputedStyle(document.querySelector('.bl-check')).strokeDashoffset === '0px'))
+  await stuck.emulateMediaFeatures([])
+  await stuck.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+  await sleep(300)
+  await stuck.screenshot({ path: path.join(shots, '00-start-screen-phone.png') })
+  await stuck.waitForSelector('#boot-help:not([hidden])', { timeout: 12000 })
+  check('start screen: after 8 s without the app, Try again and Start fresh appear', await stuck.evaluate(() =>
+    ['bl-retry', 'bl-fresh'].every((id) => document.getElementById(id).offsetParent !== null && document.getElementById(id).textContent.trim()) && document.getElementById('boot').getAttribute('aria-busy') === 'false'))
+  await stuck.screenshot({ path: path.join(shots, '00-start-screen-recovery-phone.png') })
+  await stuck.close()
+
+  const failed = await browser.newPage()
+  await failed.setViewport({ width: 1440, height: 900 })
+  await failed.evaluateOnNewDocument(() => localStorage.setItem('tpb-lang', 'bn'))
+  await failed.setRequestInterception(true)
+  failed.on('request', (r) => (isApp(r.url()) ? r.abort() : r.continue()))
+  await failed.goto(URL_, { waitUntil: 'domcontentloaded' })
+  await failed.waitForSelector('#boot-help:not([hidden])', { timeout: 4000 }).catch(() => {})
+  check('start screen: a failed start shows the way out at once, in Bangla', await failed.evaluate(() =>
+    !document.getElementById('boot-help').hidden && document.getElementById('bl-label').textContent.includes('খোলা') && document.getElementById('bl-retry').textContent.includes('আবার') && document.documentElement.lang === 'bn'))
+  await failed.screenshot({ path: path.join(shots, '00-start-screen-recovery-bangla.png') })
+  await failed.close()
+}
 
 // ---- requirements.json must carry a real deadline and a tender ID (nothing is opened otherwise)
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tpb-e2e-'))
@@ -363,8 +407,17 @@ check('checklist download completes', gotCsv && csv.charCodeAt(0) === 0xfeff && 
 // tablet and phones: no sideways scroll, statuses close to the top, every control named
 for (const [w, h, mobile, shot] of [[768, 1024, false, '10-tablet'], [390, 844, true, '11-phone'], [320, 740, true, '12-small-phone']]) {
   await page.setViewport({ width: w, height: h, deviceScaleFactor: 2, isMobile: mobile, hasTouch: mobile })
+  // Watch the reload: the empty landing page must never be painted while saved work comes back.
+  await page.evaluateOnNewDocument(() => {
+    window.__landingSeen = false
+    new MutationObserver(() => {
+      const zone = document.querySelector('[data-testid=dropzone]')
+      if (zone && !document.querySelector('[data-testid=tender-card]') && !document.getElementById('boot')?.isConnected) window.__landingSeen = true
+    }).observe(document, { childList: true, subtree: true })
+  })
   await page.reload({ waitUntil: 'networkidle0' })
   await page.waitForSelector('[data-testid=tender-card]')
+  check(`${w}px: reload with saved work shows no empty landing page and removes the start screen`, await page.evaluate(() => window.__landingSeen === false && !document.getElementById('boot')))
   await sleep(900)
   await page.$eval('[data-testid=toast] button:last-child', (b) => b.click()).catch(() => {})
   const m = await page.evaluate(() => ({

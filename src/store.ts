@@ -634,6 +634,12 @@ async function save() {
 
 /** Restores the previous session, if there is one. */
 export async function boot() {
+  // Browser storage that never answers must not hold the start screen: after 5 s the app opens empty.
+  let late = false
+  const giveUp = setTimeout(() => {
+    late = true
+    set({ booted: true }, false)
+  }, 5000)
   try {
     const st = await kvGet<Record<string, any>>('state')
     if (st && (st.tender || st.files?.length)) {
@@ -651,6 +657,7 @@ export async function boot() {
       let seal: Seal | null = null
       const sealBytes = st.seal ? await kvGet<Uint8Array>('seal') : undefined
       if (st.seal && sealBytes) seal = { ...st.seal, bytes: sealBytes, url: URL.createObjectURL(new Blob([sealBytes as BlobPart])) }
+      if (late) return
       set({
         tender: st.tender ?? null,
         reqs: st.reqs ?? [],
@@ -668,8 +675,10 @@ export async function boot() {
     }
   } catch {
     /* start clean */
+  } finally {
+    clearTimeout(giveUp)
   }
-  set({ booted: true }, false)
+  if (!late) set({ booted: true }, false)
 }
 
 export { fmtDate, formatSize }

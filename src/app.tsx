@@ -108,6 +108,12 @@ export function App() {
   const resultUrl = S.result?.url
   useEffect(() => setShowResult(!!resultUrl), [resultUrl])
 
+  // The start screen from index.html stays until saved work is back, so the empty landing page never flashes.
+  const booted = S.booted
+  useEffect(() => {
+    if (booted) (window as Window & { __bootDone?: () => void }).__bootDone?.()
+  }, [booted])
+
   const onPicked = (e: Event) => {
     const input = e.currentTarget as HTMLInputElement
     if (input.files?.length) void ingest([...input.files])
@@ -846,15 +852,21 @@ function BottomBar({ onShow }: { onShow: () => void }) {
 function Busy() {
   if (!S.busy) return null
   const pct = S.busy.total ? Math.round((S.busy.done / S.busy.total) * 100) : 0
+  // Files read and package steps can be counted; how long the AI takes cannot, so it gets no percentage.
+  const counted = S.busy.label !== 'thinking'
   return (
     <div class="a-fade fixed inset-0 z-[60] grid place-items-center bg-slate-900/45 p-6 backdrop-blur-sm" role="status" aria-live="polite">
       <div class="a-sheet card w-full max-w-sm p-6 text-center">
         <div class="a-spin mx-auto size-12 rounded-full border-4 border-teal-100 border-t-teal-600" />
         <div class="mt-4 text-lg font-bold text-slate-900">{tr(S.busy.label)}</div>
         <div class="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-100">
-          <div class="h-full rounded-full bg-teal-600 transition-[width] duration-300" style={{ width: `${Math.max(6, pct)}%` }} />
+          {counted ? (
+            <div class="h-full rounded-full bg-teal-600 transition-[width] duration-300" style={{ width: `${Math.max(6, pct)}%` }} />
+          ) : (
+            <div class="bar-run h-full w-2/5 rounded-full bg-teal-600" />
+          )}
         </div>
-        <div class="mt-1.5 text-sm font-semibold text-slate-500">{num(pct)}%</div>
+        {counted && <div class="mt-1.5 text-sm font-semibold text-slate-500">{num(pct)}%</div>}
       </div>
     </div>
   )
